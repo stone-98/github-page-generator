@@ -12,10 +12,12 @@ cd docs/.vuepress/dist
 # 如果是发布到自定义域名
 # echo 'www.example.com' > CNAME
 
+# 如果.git已经存在则不执行初始化操作
 if [ ! -d .git ]; then
    echo ".git isn't exist"
    git init
 fi
+
 git add -A
 git commit -m "$1"
 
