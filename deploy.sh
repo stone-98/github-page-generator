@@ -12,9 +12,12 @@ cd docs/.vuepress/dist
 # 如果是发布到自定义域名
 # echo 'www.example.com' > CNAME
 
-git init
+if [ ! -d .git ]; then
+   echo ".git isn't exist"
+   git init
+fi
 git add -A
-git commit -m 'deploy'
+git commit -m "$1"
 
 # 如果发布到 https://<USERNAME>.github.io
 git push -f https://github.com/stone-98/stone-98.github.io.git master
