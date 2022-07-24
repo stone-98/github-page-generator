@@ -4,14 +4,14 @@ moment.locale("zh-cn")
 module.exports = {
     base: "/",
     // 导航栏标题
-    title: "阿魁的知识星球",
+    title: "阿魁的个人博客",
     // 详情
-    description: "",
+    description: "阿魁的个人博客",
     // SEO的配置
     head: [
       ['link',{ rel:'icon', href:'/assets/img/hero.png'}],
       ['meta', { name: 'author', content: '阿魁'}],
-      ['meta', { name: 'keywords', content: '阿魁的知识星球'}],
+      ['meta', { name: 'keywords', content: '阿魁的个人博客'}],
     ],
     plugins: [
         [
@@ -31,37 +31,33 @@ module.exports = {
       // 导航栏的配置
       nav: [
         { text: '首页', link: '/' },
-        { text: '指南', link: '/guide/'},
         { 
-          text: '代码',
+          text: '编码',
           items: [
             { text: 'Dubbo', link : '/code/dubbo/'},
-            { text: 'Nacos', ariaLabel: 'nacos', link: '/code/nacos/'}
+            { text: 'Nacos', link: '/code/nacos/'}
           ]
         },
         { 
-          text: '记录',
-          ariaLabel: '记录',
+          text: '生活',
           items: [
-            { text: '总结', link : '/record/conclusion/'},
-            { text: '感触', link: '/record/feeling/'}
+            { text: '运动', link : '/life/movement/'}
           ]
         },
-        { text: '关于', link: '/about' },
+        { text: '关于我', link: '/about' },
         { text: 'Github', link: 'https://github.com/stone-98' }
       ],
 
       // 侧边栏的配置
       sidebar: {
         '/code/': [
-          '',
+          // '',
           'nacos',
           'dubbo'
         ],
-        '/record/': [
-          '',
-          'conclusion',
-          'feeling'
+        '/life/': [
+          // '',
+          'movement'
         ],
 
         // 暂时先注释掉，发现没有起作用
