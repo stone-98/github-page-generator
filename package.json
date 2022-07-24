@@ -1,0 +1,28 @@
+{
+  "name": "stone-98.github.io",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "docs:dev": "vuepress dev docs",
+    "docs:build": "vuepress build docs",
+    "dev": "vuepress dev docs --temp .temp",
+    "build": "vuepress build docs",
+    "deploy": "bash deploy.sh"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/stone-98/stone-98.github.io.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/stone-98/stone-98.github.io/issues"
+  },
+  "homepage": "https://github.com/stone-98/stone-98.github.io#readme",
+  "dependencies": {
+    "moment": "^2.29.4",
+    "vue-template-compiler": "^2.7.8"
+  }
+}
