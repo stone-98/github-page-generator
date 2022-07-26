@@ -266,3 +266,166 @@ public class ServiceManager implements RecordListener<Service> {
 }
 ```
 
+## 服务实例的监听机制
+
+对于Nacos的服务的实例都有对应的监听机制，当服务的实例发生变化时，例如：新增、删除实例，都触发对应的动作。
+
+### 监听机制注册
+
+当服务注册时，有如下代码：
+
+```java
+        consistencyService
+                .listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), true), service);
+        consistencyService
+                .listen(KeyBuilder.buildInstanceListKey(service.getNamespaceId(), service.getName(), false), service);
+```
+
+此代码分别给服务注册了临时和持久服务对应的监听机制。
+
+### 监听机制的触发
+
+以Distro协议为例，具体的逻辑在`com.alibaba.nacos.naming.consistency.ephemeral.distro.DistroConsistencyServiceImpl`中
+
+```java
+@DependsOn("ProtocolManager")
+@org.springframework.stereotype.Service("distroConsistencyService")
+public class DistroConsistencyServiceImpl implements EphemeralConsistencyService, DistroDataProcessor {
+    ...
+    private volatile Notifier notifier = new Notifier();
+    ...
+    @PostConstruct
+    public void init() {
+        GlobalExecutor.submitDistroNotifyTask(notifier);
+    }
+    ...
+}
+```
+
+通过`@PostConstruct`触发通知任务。
+
+### 服务实例变化之后的处理
+
+上述说到，当服务实例发生变化后，分别触发`com.alibaba.nacos.naming.core.Service#onChange`和`com.alibaba.nacos.naming.core.Service#onDelete`方法，这里讲解他们具体做了什么处理。
+
+```java
+@JsonInclude(Include.NON_NULL)
+public class Service extends com.alibaba.nacos.api.naming.pojo.Service implements Record, RecordListener<Instances> {
+	@Override
+    public void onChange(String key, Instances value) throws Exception {
+        
+        Loggers.SRV_LOG.info("[NACOS-RAFT] datum is changed, key: {}, value: {}", key, value);
+        
+        for (Instance instance : value.getInstanceList()) {
+			// 校验实例不能为空            
+            if (instance == null) {
+                // Reject this abnormal instance list:
+                throw new RuntimeException("got null instance " + key);
+            }
+			// 权重的取值范围0.01<权重<10000
+            if (instance.getWeight() > 10000.0D) {
+                instance.setWeight(10000.0D);
+            }
+            
+            if (instance.getWeight() < 0.01D && instance.getWeight() > 0.0D) {
+                instance.setWeight(0.01D);
+            }
+        }
+        // 更新实例信息
+        updateIPs(value.getInstanceList(), KeyBuilder.matchEphemeralInstanceListKey(key));
+        // 重新计算checksum
+        recalculateChecksum();
+    }
+    
+    @Override
+    public void onDelete(String key) throws Exception {
+        boolean isEphemeral = KeyBuilder.matchEphemeralInstanceListKey(key);
+        for (Cluster each : clusterMap.values()) {
+            each.updateIps(Collections.emptyList(), isEphemeral);
+        }
+    }
+    
+    public void updateIPs(Collection<Instance> instances, boolean ephemeral) {
+        // 初始化Map<clusterName, List<Instance>>
+        Map<String, List<Instance>> ipMap = new HashMap<>(clusterMap.size());
+        for (String clusterName : clusterMap.keySet()) {
+            ipMap.put(clusterName, new ArrayList<>());
+        }
+        // 遍历所有实例，将实例加入ipMap中
+        for (Instance instance : instances) {
+            try {
+                if (instance == null) {
+                    Loggers.SRV_LOG.error("[NACOS-DOM] received malformed ip: null");
+                    continue;
+                }
+                
+                // 如果集群名称为空设置默认集群名称
+                if (StringUtils.isEmpty(instance.getClusterName())) {
+                    instance.setClusterName(UtilsAndCommons.DEFAULT_CLUSTER_NAME);
+                }
+                
+                // 如果现有集群名称中不包含此集群名称则需要新建
+                if (!clusterMap.containsKey(instance.getClusterName())) {
+                    Loggers.SRV_LOG.warn(
+                            "cluster: {} not found, ip: {}, will create new cluster with default configuration.",
+                            instance.getClusterName(), instance.toJson());
+                    Cluster cluster = new Cluster(instance.getClusterName(), this);
+                    cluster.init();
+                    getClusterMap().put(instance.getClusterName(), cluster);
+                }
+                
+                ipMap.putIfAbsent(instance.getClusterName(), new LinkedList<>());
+    
+                ipMap.get(instance.getClusterName()).add(instance);
+            } catch (Exception e) {
+                Loggers.SRV_LOG.error("[NACOS-DOM] failed to process ip: " + instance, e);
+            }
+        }
+        
+        for (Map.Entry<String, List<Instance>> entry : ipMap.entrySet()) {
+            //make every ip mine
+            List<Instance> entryIPs = entry.getValue();
+            // 更新Cluster
+            clusterMap.get(entry.getKey()).updateIps(entryIPs, ephemeral);
+        }
+        // 修改最近更新时间
+        setLastModifiedMillis(System.currentTimeMillis());
+        // 发布服务改变时间
+        getPushService().serviceChanged(this);
+        // 执行双写服务
+        ApplicationUtils.getBean(DoubleWriteEventListener.class).doubleWriteToV2(this, ephemeral);
+        StringBuilder stringBuilder = new StringBuilder();
+        
+        for (Instance instance : allIPs()) {
+            stringBuilder.append(instance.toIpAddr()).append('_').append(instance.isHealthy()).append(',');
+        }
+        
+        // 打野所有实例
+        Loggers.EVT_LOG.info("[IP-UPDATED] namespace: {}, service: {}, ips: {}", getNamespaceId(), getName(),
+                stringBuilder.toString());
+        
+    }
+}
+```
+
+# 附录
+
+## 1、集群名称
+
+在Nacos中，支持集群配置，集群是对指定微服务的一种虚拟分类，从而实现异地多活，就近调用。
+
+在配置信息中指定集群名称，如下：
+
+```yaml
+spring:
+  cloud:
+    nacos:
+      discovery:
+        # 北京机房集群，如不进行指定，则使用默认集群名称
+        cluster-name: BJ
+```
+
+
+
+
+
