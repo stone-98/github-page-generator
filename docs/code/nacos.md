@@ -408,6 +408,210 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
 }
 ```
 
+## 临时实例心跳机制
+
+### 临时实例客户端心跳机制
+
+在客户端启动时，在发起服务注册的逻辑中，有如下代码:
+
+```java
+public class NacosNamingService implements NamingService {
+    public void registerInstance(String serviceName, String groupName, Instance instance) throws NacosException {
+        String groupedServiceName = NamingUtils.getGroupedName(serviceName, groupName);
+        // 是否临时实例，临时实例则需要客户端主动推送心跳，而持久实例则通过服务端主动探测
+        if (instance.isEphemeral()) {
+            BeatInfo beatInfo = this.beatReactor.buildBeatInfo(groupedServiceName, instance);
+            this.beatReactor.addBeatInfo(groupedServiceName, beatInfo);
+        }
+        this.serverProxy.registerService(groupedServiceName, groupName, instance);
+    }
+}
+```
+
+在上述代码中，如果注册的时临时实例，则客户端开启线程主动给注册中心上报心跳信息。
+
+```java
+public void addBeatInfo(String serviceName, BeatInfo beatInfo) {
+        LogUtils.NAMING_LOGGER.info("[BEAT] adding beat: {} to beat map.", beatInfo);
+    	// 通过服务名称、ip、port构建唯一key
+        String key = this.buildKey(serviceName, beatInfo.getIp(), beatInfo.getPort());
+    	// 如果已经注册该实例则先停止已经存在的实例
+        BeatInfo existBeat = null;
+        if ((existBeat = (BeatInfo)this.dom2Beat.remove(key)) != null) {
+            existBeat.setStopped(true);
+        }
+
+        this.dom2Beat.put(key, beatInfo);
+    	// 心跳线程开始调度
+        this.executorService.schedule(new BeatReactor.BeatTask(beatInfo), beatInfo.getPeriod(), TimeUnit.MILLISECONDS);
+    	// 设置metrics
+        MetricsMonitor.getDom2BeatSizeMonitor().set((double)this.dom2Beat.size());
+    }
+```
+
+心跳任务代码如下：
+
+```java
+class BeatTask implements Runnable {
+        BeatInfo beatInfo;
+
+        public BeatTask(BeatInfo beatInfo) {
+            this.beatInfo = beatInfo;
+        }
+
+        public void run() {
+            // 如果停止则直接结束，并且不开始下一次的调度
+            if (!this.beatInfo.isStopped()) {
+                // 获取心跳间隔
+                long nextTime = this.beatInfo.getPeriod();
+
+                try {
+                    JsonNode result = BeatReactor.this.serverProxy.sendBeat(this.beatInfo, BeatReactor.this.lightBeatEnabled);
+                    long interval = result.get("clientBeatInterval").asLong();
+                    boolean lightBeatEnabled = false;
+                    if (result.has("lightBeatEnabled")) {
+                        lightBeatEnabled = result.get("lightBeatEnabled").asBoolean();
+                    }
+				  // 标记心跳已经开启
+                    BeatReactor.this.lightBeatEnabled = lightBeatEnabled;
+                    // 如果服务端返回的间隔时间不为空，则以服务端返回的为准
+                    if (interval > 0L) {
+                        nextTime = interval;
+                    }
+
+                    int code = 10200;
+                    if (result.has("code")) {
+                        code = result.get("code").asInt();
+                    }
+				  // 如果返回值==20404代表资源没找到，则开始新的一轮注册
+                    if (code == 20404) {
+                        Instance instance = new Instance();
+                        instance.setPort(this.beatInfo.getPort());
+                        instance.setIp(this.beatInfo.getIp());
+                        instance.setWeight(this.beatInfo.getWeight());
+                        instance.setMetadata(this.beatInfo.getMetadata());
+                        instance.setClusterName(this.beatInfo.getCluster());
+                        instance.setServiceName(this.beatInfo.getServiceName());
+                        instance.setInstanceId(instance.getInstanceId());
+                        instance.setEphemeral(true);
+
+                        try {
+                            BeatReactor.this.serverProxy.registerService(this.beatInfo.getServiceName(), NamingUtils.getGroupName(this.beatInfo.getServiceName()), instance);
+                        } catch (Exception var10) {
+                        }
+                    }
+                } catch (NacosException var11) {
+                    LogUtils.NAMING_LOGGER.error("[CLIENT-BEAT] failed to send beat: {}, code: {}, msg: {}", new Object[]{JacksonUtils.toJson(this.beatInfo), var11.getErrCode(), var11.getErrMsg()});
+                }
+			   // 开始下一次的心跳发起
+                BeatReactor.this.executorService.schedule(BeatReactor.this.new BeatTask(this.beatInfo), nextTime, TimeUnit.MILLISECONDS);
+            }
+        }
+    }
+```
+
+### 临时实例服务端心跳机制
+
+```java
+@RestController
+@RequestMapping(UtilsAndCommons.NACOS_NAMING_CONTEXT + UtilsAndCommons.NACOS_NAMING_INSTANCE_CONTEXT)
+public class InstanceController {
+    @CanDistro
+    @PutMapping("/beat")
+    @Secured(action = ActionTypes.WRITE)
+    public ObjectNode beat(HttpServletRequest request) throws Exception {
+        ...
+        int resultCode = getInstanceOperator()
+                .handleBeat(namespaceId, serviceName, ip, port, clusterName, clientBeat, builder);
+        ...
+        return result;
+    }
+}
+```
+
+chuli
+
+```java
+@Override
+    public int handleBeat(String namespaceId, String serviceName, String ip, int port, String cluster,
+            RsInfo clientBeat, BeatInfoInstanceBuilder builder) throws NacosException {
+        // 转换实体
+        com.alibaba.nacos.naming.core.Instance instance = serviceManager
+                .getInstance(namespaceId, serviceName, cluster, ip, port);
+        
+        if (instance == null) {
+            // 如果实例为空并且客户端发送的心跳也为空，则返回RESOURCE_NOT_FOUND
+            if (clientBeat == null) {
+                return NamingResponseCode.RESOURCE_NOT_FOUND;
+            }
+            // 如果客户端的心跳不为空，则重新注册
+            Loggers.SRV_LOG.warn("[CLIENT-BEAT] The instance has been removed for health mechanism, "
+                    + "perform data compensation operations, beat: {}, serviceName: {}", clientBeat, serviceName);
+            instance = parseInstance(builder.setBeatInfo(clientBeat).setServiceName(serviceName).build());
+            serviceManager.registerInstance(namespaceId, serviceName, instance);
+        }
+        
+        Service service = serviceManager.getService(namespaceId, serviceName);
+        
+        serviceManager.checkServiceIsNull(service, namespaceId, serviceName);
+        // 如果客户端的心跳为空，则创建心跳
+        if (clientBeat == null) {
+            clientBeat = new RsInfo();
+            clientBeat.setIp(ip);
+            clientBeat.setPort(port);
+            clientBeat.setCluster(cluster);
+        }
+        // 对心跳进行处理
+        service.processClientBeat(clientBeat);
+        return NamingResponseCode.OK;
+    }
+```
+
+处理逻辑
+
+```java
+public class ClientBeatProcessor implements BeatProcessor {
+    @Override
+    public void run() {
+        Service service = this.service;
+        if (Loggers.EVT_LOG.isDebugEnabled()) {
+            Loggers.EVT_LOG.debug("[CLIENT-BEAT] processing beat: {}", rsInfo.toString());
+        }
+        
+        String ip = rsInfo.getIp();
+        String clusterName = rsInfo.getCluster();
+        int port = rsInfo.getPort();
+        // 通过集群名称获取此集群
+        Cluster cluster = service.getClusterMap().get(clusterName);
+        List<Instance> instances = cluster.allIPs(true);
+		// 对集群中所有实例进行处理
+        for (Instance instance : instances) {
+            if (instance.getIp().equals(ip) && instance.getPort() == port) {
+                if (Loggers.EVT_LOG.isDebugEnabled()) {
+                    Loggers.EVT_LOG.debug("[CLIENT-BEAT] refresh beat: {}", rsInfo.toString());
+                }
+                // 更新实例最后心跳时间
+                instance.setLastBeat(System.currentTimeMillis());
+                // 如果实例没有被标记，并且目前处于不健康状态，则更新实例的健康状态，并且发布实例状态改变事件
+                if (!instance.isMarked() && !instance.isHealthy()) {
+                    instance.setHealthy(true);
+                    Loggers.EVT_LOG
+                            .info("service: {} {POS} {IP-ENABLED} valid: {}:{}@{}, region: {}, msg: client beat ok",
+                                    cluster.getService().getName(), ip, port, cluster.getName(),
+                                    UtilsAndCommons.LOCALHOST_SITE);
+                    // 对订阅此服务的客户端发送udp事件通知
+                    getPushService().serviceChanged(service);
+                }
+            }
+        }
+    }
+}
+```
+
+
+
+
+
 # 附录
 
 ## 1、集群名称
@@ -424,6 +628,8 @@ spring:
         # 北京机房集群，如不进行指定，则使用默认集群名称
         cluster-name: BJ
 ```
+
+## 2、标记服务下线
 
 
 
