@@ -6,23 +6,27 @@ set -e
 # 生成静态文件
 npm run docs:build
 
+if [ -n "$(git status -s)" ];then
+    echo "github-page-generator starting push"
+    git add .
+    git commit -m "$1"
+    git push origin master:master
+    echo "github-page-generator push finish"
+fi
+
 # 进入生成的文件夹
-cd docs/.vuepress/dist
+cd ../../IdeaWorkSpace/stone-98.github.io
 
 # 如果是发布到自定义域名
 # echo 'www.example.com' > CNAME
 
-# 如果.git已经存在则不执行初始化操作
-if [ ! -d .git ]; then
-   echo ".git isn't exist"
-   git init
+if [ -n "$(git status -s)" ];then
+    echo "stone-98.github.io starting push"
+    git add .
+    git commit -m "$1"
+    git push origin master:master
+    echo "stone-98.github.io push finish"
 fi
-
-git add -A
-git commit -m "$1"
-
-# 如果发布到 https://<USERNAME>.github.io
-git push -f https://github.com/stone-98/stone-98.github.io.git master
 
 # 如果发布到 https://<USERNAME>.github.io/<REPO>
 # git push -f git@github.com:<USERNAME>/<REPO>.git master:gh-pages

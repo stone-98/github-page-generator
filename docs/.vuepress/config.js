@@ -2,6 +2,7 @@ const moment = require('moment');
 moment.locale("zh-cn")
 
 module.exports = {
+    dest: "../../IdeaWorkSpace/stone-98.github.io/docs",
     base: "/",
     // 导航栏标题
     title: "阿魁的个人博客",
