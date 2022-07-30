@@ -1,6 +1,6 @@
 ---
 home: true
-heroImage: https://raw.githubusercontent.com/stone-98/picture-bed/main/img/202207301759015.jpg
+heroImage: assets/img/avatar.jpg
 heroText: 阿魁的个人博客
 tagline: null
 actionText: null
