@@ -10,7 +10,7 @@ module.exports = {
     description: "阿魁的个人博客",
     // SEO的配置
     head: [
-      ['link',{ rel:'icon', href:'/assets/img/hero.png'}],
+      ['link',{ rel:'icon', href:'https://raw.githubusercontent.com/stone-98/picture-bed/main/img/202207301759015.jpg'}],
       ['meta', { name: 'author', content: '阿魁'}],
       ['meta', { name: 'keywords', content: '阿魁的个人博客'}],
     ],
@@ -28,7 +28,7 @@ module.exports = {
     themeConfig: {
       lastUpdated: '更新时间',
       // logo的配置
-      logo: '/assets/img/logo.png',
+      logo: 'https://raw.githubusercontent.com/stone-98/picture-bed/main/img/202207301759015.jpg',
       // 导航栏的配置
       nav: [
         { text: '首页', link: '/' },
