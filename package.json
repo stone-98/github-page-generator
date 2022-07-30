@@ -23,6 +23,7 @@
   "homepage": "https://github.com/stone-98/stone-98.github.io#readme",
   "dependencies": {
     "moment": "^2.29.4",
-    "vue-template-compiler": "^2.7.8"
+    "vue-template-compiler": "^2.7.8",
+    "vuepress": "^1.9.7"
   }
 }

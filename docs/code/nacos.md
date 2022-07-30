@@ -1,5 +1,19 @@
 # Nacos
 
+此Nacos笔记基于Nacos版本[2.1.0 (Apr 29, 2022)](https://github.com/alibaba/nacos/releases/tag/2.1.0)。
+
+## 编译Nacos源码
+
+- 从同性交友网站上将Nacos导入IDEA
+
+- 首先IDEA需要安装`Protobuf Support`插件（`protobuf`是一种数据交换格式，又称PB编码，由Google开源），安装后通过`protobuf`编译将`proto`生成`java`文件
+
+  ![image-20220730114001326](C:\Users\stone\AppData\Roaming\Typora\typora-user-images\image-20220730114001326.png)
+
+- 在nacos目录下执行`mvn -Prelease-nacos -Dmaven.test.skip=true clean install -U `
+- 在console模块中找到Nacos启动类新增VM options：`-Dnacos.standalone=true`单机版启动Nacos
+- 此方式启动模式是单机版启动并且使用的是内置数据库，对于初学Nacos已经足以。
+
 ## Nacos服务注册原理
 
 ## Nacos相关包的作用
