@@ -52,7 +52,7 @@ module.exports = {
       // 侧边栏的配置
       sidebar: {
         '/code/': [
-          // '',
+          '',
           'nacos',
           'dubbo'
         ],

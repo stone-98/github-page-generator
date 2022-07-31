@@ -422,7 +422,12 @@ public class Service extends com.alibaba.nacos.api.naming.pojo.Service implement
 }
 ```
 
-## 临时实例心跳机制
+## 心跳机制
+
+Nacos的心跳机制和临时实例和持久实例的特性息息相关，所以我这里通过临时实例和持久化实例作为维度进行分析。
+
+- 临时实例：临时实例只是临时注册在注册中心上，当服务下线或服务不可用时会被注册中心剔除，临时实例会与注册中心保持心跳，当服务端在指定时间没有接收到客户端的心跳信息，则会把实例状态置为不健康，然后在一段时间之后将它从注册中心剔除。
+- 持久实例：永久实例会永久注册在注册中心，除非对它进行删除操作才能将它剔除，并且对于永久实例它可能并不知道注册中心的存在，不会向注册中心上报心跳，而是注册中心主动对他进行探活。
 
 ### 临时实例客户端心跳机制
 
@@ -615,6 +620,78 @@ public class ClientBeatProcessor implements BeatProcessor {
                                     UtilsAndCommons.LOCALHOST_SITE);
                     // 对订阅此服务的客户端发送udp事件通知
                     getPushService().serviceChanged(service);
+                }
+            }
+        }
+    }
+}
+```
+
+## 持久化实例的检查机制
+
+持久化实例的检查机制是服务成功注册之后，然后通过定时任务类似的机制，由服务端主动向客户端发起探测。
+
+```java
+public class Cluster extends com.alibaba.nacos.api.naming.pojo.Cluster implements Cloneable {
+    // 集群的初始化方法，开启健康检查任务
+    public void init() {
+        if (inited) {
+            return;
+        }
+        checkTask = new HealthCheckTask(this);
+        
+        HealthCheckReactor.scheduleCheck(checkTask);
+        inited = true;
+    }
+}
+```
+
+健康检查的核心逻辑
+
+```java
+public class HealthCheckTask implements Runnable {
+        @Override
+    public void run() {
+        
+        try {
+            // 如果使用了2.0+grpc的功能，则不j
+            // If upgrade to 2.0.X stop health check with v1
+            if (ApplicationUtils.getBean(UpgradeJudgement.class).isUseGrpcFeatures()) {
+                return;
+            }
+            if (distroMapper.responsible(cluster.getService().getName()) && switchDomain
+                    .isHealthCheckEnabled(cluster.getService().getName())) {
+                healthCheckProcessor.process(this);
+                if (Loggers.EVT_LOG.isDebugEnabled()) {
+                    Loggers.EVT_LOG
+                            .debug("[HEALTH-CHECK] schedule health check task: {}", cluster.getService().getName());
+                }
+            }
+        } catch (Throwable e) {
+            Loggers.SRV_LOG
+                    .error("[HEALTH-CHECK] error while process health check for {}:{}", cluster.getService().getName(),
+                            cluster.getName(), e);
+        } finally {
+            if (!cancelled) {
+                HealthCheckReactor.scheduleCheck(this);
+                
+                // worst == 0 means never checked
+                if (this.getCheckRtWorst() > 0 && switchDomain.isHealthCheckEnabled(cluster.getService().getName())
+                        && distroMapper.responsible(cluster.getService().getName())) {
+                    // TLog doesn't support float so we must convert it into long
+                    long diff =
+                            ((this.getCheckRtLast() - this.getCheckRtLastLast()) * 10000) / this.getCheckRtLastLast();
+                    
+                    this.setCheckRtLastLast(this.getCheckRtLast());
+                    
+                    Cluster cluster = this.getCluster();
+                    
+                    if (Loggers.CHECK_RT.isDebugEnabled()) {
+                        Loggers.CHECK_RT.debug("{}:{}@{}->normalized: {}, worst: {}, best: {}, last: {}, diff: {}",
+                                cluster.getService().getName(), cluster.getName(), cluster.getHealthChecker().getType(),
+                                this.getCheckRtNormalized(), this.getCheckRtWorst(), this.getCheckRtBest(),
+                                this.getCheckRtLast(), diff);
+                    }
                 }
             }
         }
