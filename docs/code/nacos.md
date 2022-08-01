@@ -16,6 +16,18 @@
 
 ## Nacos服务注册原理
 
+Nacos在2.0版本之前都是通过HTTP的方式去注册服务，在2.0版本新增Grpc的方式。
+
+### Nacos集成SpringCloudAlibaba服务注册原理入口
+
+### V1版本服务注册原理——Client
+
+### V2版本服务注册原理——Client
+
+### V1版本服务注册原理——Server
+
+### V2版本服务注册原理——Server
+
 ## Nacos相关包的作用
 
 使用Nacos分别需要导入如下两个包:
