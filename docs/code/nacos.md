@@ -22,9 +22,35 @@ Nacos在2.0版本之前都是通过HTTP的方式去注册服务，在2.0版本�
 
 ### V1版本服务注册原理——Client
 
-### V2版本服务注册原理——Client
-
 ### V1版本服务注册原理——Server
+
+### Nacos关于Grpc的封装
+
+在Nacos2.0版本之后，Nacos支持了Grpc的通讯，如果有同学对于Grpc不了解，请先行了解[Grpc](https://grpc.io/)。
+
+#### Server
+
+整体概览：
+
+![image-20220807113056073](C:\Users\stone-98\AppData\Roaming\Typora\typora-user-images\image-20220807113056073.png)
+
+- BaseRpcServer：定义了基本的服务启动以及关闭的接口。
+- BaseGrpcServer：实现了基本的Server模块的功能。
+- GrpcClusterServer：用于集群中节点的交互。
+- GrpcSdkServer：用于客户端和服务端的交互。
+
+#### Client
+
+整体概览：
+
+![image-20220807152011476](C:\Users\stone-98\AppData\Roaming\Typora\typora-user-images\image-20220807152011476.png)
+
+在Client端，它的整体层次和Server端是类似的，不同的是RpcServer单单定义接口，但是RpcClient不仅定义了接口，还提供了诸多的实现，例如:
+
+- 消息发送
+- 服务器列表改变，重新连接下一个服务器 
+
+### V2版本服务注册原理——Client
 
 ### V2版本服务注册原理——Server
 
