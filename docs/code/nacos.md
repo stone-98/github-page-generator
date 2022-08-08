@@ -48,7 +48,86 @@ Nacos在2.0版本之前都是通过HTTP的方式去注册服务，在2.0版本�
 在Client端，它的整体层次和Server端是类似的，不同的是RpcServer单单定义接口，但是RpcClient不仅定义了接口，还提供了诸多的实现，例如:
 
 - 消息发送
-- 服务器列表改变，重新连接下一个服务器 
+- 服务器列表改变，重新连接下一个服务器
+
+##### GrpcClient
+
+在RpcClient中定义了基本客户端与远端服务器通讯功能的抽象，而具体的通讯实现则由下面的具体实现来负责。
+
+GrpcClient负责与远程服务器建立连接，创建一个GrpcConnection的对象，并初始化Grpc一元请求的stub以及双向流的stub，并且将他们以及初始化的Channel注入到GrpcConnection中，随后发送一个连接建立的请求，在服务端注册自己的连接。
+
+```java
+public abstract class GrpcClient extends RpcClient {	
+    @Override
+    public Connection connectToServer(ServerInfo serverInfo) {
+        try {
+            // 如果grpcExecutor为空，则初始化
+            if (grpcExecutor == null) {
+                this.grpcExecutor = createGrpcExecutor(serverInfo.getServerIp());
+            }
+            // 获取暴漏的端口
+            int port = serverInfo.getServerPort() + rpcPortOffset();
+            // 初始化一元请求调用的stub
+            RequestGrpc.RequestFutureStub newChannelStubTemp = createNewChannelStub(serverInfo.getServerIp(), port);
+            if (newChannelStubTemp != null) {
+                // 检查stub是否有效，如果无效直接shuntDown channel
+                Response response = serverCheck(serverInfo.getServerIp(), port, newChannelStubTemp);
+                if (response == null || !(response instanceof ServerCheckResponse)) {
+                    shuntDownChannel((ManagedChannel) newChannelStubTemp.getChannel());
+                    return null;
+                }
+                // 初始化双向流stub
+                BiRequestStreamGrpc.BiRequestStreamStub biRequestStreamStub = BiRequestStreamGrpc
+                    .newStub(newChannelStubTemp.getChannel());
+                // 初始化grpcConn
+                GrpcConnection grpcConn = new GrpcConnection(serverInfo, grpcExecutor);
+                // 将响应的response中的connectId设置到grpcConn中
+                grpcConn.setConnectionId(((ServerCheckResponse) response).getConnectionId());
+
+                // create stream request and bind connection event to this connection.
+                // 创建双向流并且将双向流绑定到grpcConn
+                StreamObserver<Payload> payloadStreamObserver = bindRequestStream(biRequestStreamStub, grpcConn);
+
+                // stream observer to send response to server
+                // 设置双向流到grpcConn中
+                grpcConn.setPayloadStreamObserver(payloadStreamObserver);
+                // 设置单向流到grpcConn中
+                grpcConn.setGrpcFutureServiceStub(newChannelStubTemp);
+                // 设置channel到grpcConn中
+                grpcConn.setChannel((ManagedChannel) newChannelStubTemp.getChannel());
+                // send a  setup request.
+                // 向服务器发送设置双向流请求
+                ConnectionSetupRequest conSetupRequest = new ConnectionSetupRequest();
+                conSetupRequest.setClientVersion(VersionUtils.getFullClientVersion());
+                conSetupRequest.setLabels(super.getLabels());
+                conSetupRequest.setAbilities(super.clientAbilities);
+                conSetupRequest.setTenant(super.getTenant());
+                grpcConn.sendRequest(conSetupRequest);
+                // wait to register connection setup
+                // TODO stone-98 应该是等待服务端设置
+                Thread.sleep(100L);
+                return grpcConn;
+            }
+            return null;
+        } catch (Exception e) {
+            LOGGER.error("[{}]Fail to connect to server!,error={}", GrpcClient.this.getName(), e);
+        }
+        return null;
+    }
+}
+```
+
+##### GrpcConnect
+
+整体概览：
+
+![image-20220808222411675](C:\Users\stone-98\AppData\Roaming\Typora\typora-user-images\image-20220808222411675.png)
+
+- Requester：定义了基本的请求接口
+- Connection：继承了Requester接口，在Requester接口的基础上扩展了connectionId、isAbandon字段
+- GrpcConnection：对Connection进行了实现
+
+
 
 ### V2版本服务注册原理——Client
 
