@@ -24,6 +24,87 @@ Nacos在2.0版本之前都是通过HTTP的方式去注册服务，在2.0版本�
 
 ### V1版本服务注册原理——Server
 
+### spring-cloud-sarter-alibaba-nacos-discovery初始化Grpc连接流程
+
+spring-cloud-starter-alibaba-nacos-discovery通过com.alibaba.cloud.nacos.discovery.NacosWatch实现org.springframework.context.SmartLifecycle接口来初始化启动、停止Nacos组件。
+
+```java
+public class NacosWatch
+		implements ApplicationEventPublisherAware, SmartLifecycle, DisposableBean {
+    @Override
+	public void start() {
+		if (this.running.compareAndSet(false, true)) {
+			EventListener eventListener = listenerMap.computeIfAbsent(buildKey(),
+					event -> new EventListener() {
+						@Override
+						public void onEvent(Event event) {
+							if (event instanceof NamingEvent) {
+								List<Instance> instances = ((NamingEvent) event)
+										.getInstances();
+								Optional<Instance> instanceOptional = selectCurrentInstance(
+										instances);
+								instanceOptional.ifPresent(currentInstance -> {
+									resetIfNeeded(currentInstance);
+								});
+							}
+						}
+					});
+			// 初始化NacosService
+			NamingService namingService = nacosServiceManager
+					.getNamingService(properties.getNacosProperties());
+			try {
+				namingService.subscribe(properties.getService(), properties.getGroup(),
+						Arrays.asList(properties.getClusterName()), eventListener);
+			}
+			catch (Exception e) {
+				log.error("namingService subscribe failed, properties:{}", properties, e);
+			}
+
+			this.watchFuture = this.taskScheduler.scheduleWithFixedDelay(
+					this::nacosServicesWatch, this.properties.getWatchDelay());
+		}
+	}
+}
+```
+
+NacosServiceManager是对NamingService进行管理的类，委托调用Nacos的api去创建NamingService
+
+```java
+public class NacosServiceManager {
+    public NamingService getNamingService(Properties properties) {
+        // 如果namingService为空，则创建NamingService
+        if (Objects.isNull(this.namingService)) {
+            buildNamingService(properties);
+        }
+        return namingService;
+	}
+    
+    private NamingService buildNamingService(Properties properties) {
+		if (Objects.isNull(namingService)) {
+			synchronized (NacosServiceManager.class) {
+				if (Objects.isNull(namingService)) {
+                      // 创建namingService
+					namingService = createNewNamingService(properties);
+				}
+			}
+		}
+		return namingService;
+	}
+    
+    private NamingService createNewNamingService(Properties properties) {
+		try {
+             // 调用com.alibaba.nacos.api.NacosFactory#createNamingService(java.util.Properties)创建namingService
+			return createNamingService(properties);
+		}
+		catch (NacosException e) {
+			throw new RuntimeException(e);
+		}
+	}
+}
+```
+
+
+
 ### Nacos关于Grpc的封装
 
 在Nacos2.0版本之后，Nacos支持了Grpc的通讯，如果有同学对于Grpc不了解，请先行了解[Grpc](https://grpc.io/)。
@@ -45,10 +126,33 @@ Nacos在2.0版本之前都是通过HTTP的方式去注册服务，在2.0版本�
 
 ![image-20220807152011476](C:\Users\stone-98\AppData\Roaming\Typora\typora-user-images\image-20220807152011476.png)
 
+##### RpcClient
+
 在Client端，它的整体层次和Server端是类似的，不同的是RpcServer单单定义接口，但是RpcClient不仅定义了接口，还提供了诸多的实现，例如:
 
 - 消息发送
 - 服务器列表改变，重新连接下一个服务器
+- ......
+
+```java
+public abstract class RpcClient implements Closeable {
+    // 连接以及断开连接事件的阻塞队列
+    protected BlockingQueue<ConnectionEvent> eventLinkedBlockingQueue = new LinkedBlockingQueue<>();
+    // rpcClient的启动状态
+    protected volatile AtomicReference<RpcClientStatus> rpcClientStatus = new AtomicReference<>(
+        RpcClientStatus.WAIT_INIT);
+    // 重新连接信号的阻塞队列
+    private final BlockingQueue<ReconnectContext> reconnectionSignal = new ArrayBlockingQueue<>(1);
+    // 服务可用列表变化，判断当前的连接的服务是否在服务可用列表中，如果不在则放入reconnectionSignal中，开始重新连接
+    public void onServerListChange() {...}
+    // 将rpcClient启动状态置为STARTING
+    // 初始化一个线程池处理eventLinkedBlockingQueue中的事件,通知对于的listener
+    // 初始化一个线程池处理reconnectionSignal中的重新连接的信号
+    public final void start() throws NacosException { ... }
+}
+```
+
+
 
 ##### GrpcClient
 
@@ -771,7 +875,7 @@ public class HealthCheckTask implements Runnable {
     public void run() {
         
         try {
-            // 如果使用了2.0+grpc的功能，则不j
+            // 如果使用了2.0+grpc的功能，则不进入
             // If upgrade to 2.0.X stop health check with v1
             if (ApplicationUtils.getBean(UpgradeJudgement.class).isUseGrpcFeatures()) {
                 return;
