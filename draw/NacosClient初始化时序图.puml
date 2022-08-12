@@ -1,0 +1,20 @@
+@startuml
+title NacosClient初始化时序图
+
+actor User as user
+participant  NacosNamingService
+participant  ValidatorUtils
+participant InstancesChangeNotifier
+participant NotifyCenter
+autonumber
+
+user -> NacosNamingService:方法名称：init
+NacosNamingService -> ValidatorUtils:方法名称:checkInitParam \n*检查contextPath是否有效
+NacosNamingService -> InitUtils: 方法名称:initSerialization \n*注册子类序列化类型
+NacosNamingService -> InitUtils: 方法名称:initWebRootContext \n*获取contextPath初始化相关路径
+NacosNamingService -> NacosNamingService: 方法名称:initLogName \n*初始化logName（目前暂时未发现作用）
+NacosNamingService -> NacosNamingService: 方法名称:忽略 \n*初始化通知事件作用域
+NacosNamingService -> InstancesChangeNotifier: 方法名称：InstancesChangeNotifier \n*初始化实例改变通知 \n*用户可以订阅实例当实例发送改变时回调EventListener#onEvent
+NacosNamingService -> NotifyCenter:方法名称:registerToPublisher \n*将事件注册到发布者
+NacosNamingService -> NotifyCenter:方法名称:registerSubscriber \n*注册订阅者
+@enduml
