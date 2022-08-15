@@ -17,4 +17,8 @@ NacosNamingService -> NacosNamingService: 方法名称:忽略 \n*初始化通知
 NacosNamingService -> InstancesChangeNotifier: 方法名称：InstancesChangeNotifier \n*初始化实例改变通知 \n*用户可以订阅实例当实例发送改变时回调EventListener#onEvent
 NacosNamingService -> NotifyCenter:方法名称:registerToPublisher \n*将事件注册到发布者
 NacosNamingService -> NotifyCenter:方法名称:registerSubscriber \n*注册订阅者
+NacosNamingService -> ServiceInfoHolder:方法名称:ServiceInfoHolder(String namespace, String notifierEventScope, Properties properties) \n*初始化服务信息
+ServiceInfoHolder -> ServiceInfoHolder:方法名称:void initCacheDir(String namespace, Properties properties) \n*获取服务信息缓存路径
+ServiceInfoHolder -> ServiceInfoHolder:方法名称:boolean isLoadCacheAtStart(Properties properties) \n*是否从磁盘中加载服务信息，返回true则直接加载
+
 @enduml
