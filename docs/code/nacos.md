@@ -920,17 +920,111 @@ public class HealthCheckTask implements Runnable {
 }
 ```
 
-#### 健康检查的拦截器机制
+## V2的健康检查机制
 
-Nacos服务端在处理健康检查和心跳机制的时候是采用拦截器来执行的，拦截器链内部有多个拦截器，通过获取不同的拦截器链实例，在实例内部指定具体的拦截器类型来组成一组拦截器。这里使用了拦截器模式和模板模式来组织代码。拦截器模式体现在整体拦截机制的实现；模板模式主要体现在对拦截器链的抽象实现上。
+#### 健康检查的拦截链机制
 
-**拦截器三要素：**
+Nacos服务端在处理健康检查和心跳机制的时候是采用拦截链来执行的，拦截链内部有多个拦截器，通过获取不同的拦截器链实例，在实例内部指定具体的拦截器类型来组成一组拦截器。这里使用了拦截器模式和模板模式来组织代码。拦截器模式体现在整体拦截机制的实现，模板模式主要体现在对拦截器链的抽象实现上。
 
-- 拦截器
-- 调度者
-- 业务逻辑
+**拦截链的核心类图**
 
+![image-20220817220500150](https://raw.githubusercontent.com/stone-98/picture-bed/main/imgimage-20220817220500150.png)
 
+**核心类：**
+
+- Interceptable：定义了该拦截链处理的对象基类
+
+  - void passIntercept()：该对象没有被拦截器拦截，则执行该方法中具体的业务逻辑
+  - void afterIntercept()：该对象在被拦截链拦截之后，则执行该方法中具体的业务逻辑
+
+- NacosNamingInterceptor：定义一个拦截器的基本功能，同时限定了传入的拦截对象类型必须为Interceptable以及Interceptable的子类
+
+  - boolean isInterceptType(Class<?> type)：判断拦截器是否支持处理这个类型
+  - boolean intercept(T object)：判断是否执行拦截操作
+  - int order()：拦截器的优先级，数字越低优先级越高
+
+- NacosNamingInterceptorChain：定义了拦截器链对象应该具有的基本行为
+
+  - void addInterceptor(NacosNamingInterceptor<T> interceptor)：添加拦截器
+  - void doInterceptor(T object)：执行拦截器
+
+- AbstractNamingInterceptorChain：抽象的拦截链，定义了拦截链的基本工作流程
+
+  - public void addInterceptor(NacosNamingInterceptor<T> interceptor)：向interceptors属性中新增拦截器
+
+  - public void doInterceptor(T object)：通过interceptors对传入的Interceptable的子类执行拦截操作，拦截成功后调用com.alibaba.nacos.naming.interceptor.Interceptable#afterIntercept，否则调用com.alibaba.nacos.naming.interceptor.Interceptable#passIntercept
+
+AbstractNamingInterceptorChain具体的源码解析如下所示：
+
+```java
+public abstract class AbstractNamingInterceptorChain<T extends Interceptable>
+        implements NacosNamingInterceptorChain<T> {
+    
+    // 存储多个拦截器
+    private final List<NacosNamingInterceptor<T>> interceptors;
+    
+    // protected限制只有当前包和子类才能够对它进行初始化
+    protected AbstractNamingInterceptorChain(Class<? extends NacosNamingInterceptor<T>> clazz) {
+        // 初始化拦截链
+        this.interceptors = new LinkedList<>();
+        // 使用SPI模式加载指定的拦截器类型
+        interceptors.addAll(NacosServiceLoader.load(clazz));
+        // 对拦截器的顺序进行排序
+        interceptors.sort(Comparator.comparingInt(NacosNamingInterceptor::order));
+    }
+    
+    /**
+     * Get all interceptors.
+     * 获取全部的拦截器
+     *
+     * @return interceptors list
+     */
+    protected List<NacosNamingInterceptor<T>> getInterceptors() {
+        return interceptors;
+    }
+    
+    /**
+     * 新增拦截器
+     * @param interceptor interceptor
+     */
+    @Override
+    public void addInterceptor(NacosNamingInterceptor<T> interceptor) {
+        interceptors.add(interceptor);
+        interceptors.sort(Comparator.comparingInt(NacosNamingInterceptor::order));
+    }
+    
+    /**
+     * 执行拦截器
+     * @param object be interceptor object
+     */
+    @Override
+    public void doInterceptor(T object) {
+        // 因为内部的拦截器已经排序过了，所以直接遍历
+        for (NacosNamingInterceptor<T> each : interceptors) {
+            // 若当前拦截的对象不是当前拦截器所要处理的类型则调过
+            if (!each.isInterceptType(object.getClass())) {
+                continue;
+            }
+            // 执行拦截操作成功之后，继续执行拦截后操作
+            if (each.intercept(object)) {
+                object.afterIntercept();
+                return;
+            }
+        }
+        // 未拦截的操作
+        object.passIntercept();
+    }
+}
+```
+
+至此总结下拦截链的工作逻辑：
+
+​	AbstractNamingInterceptorChain可以通过SPI机制或手动的方式添加具体的拦截器，然后调用AbstractNamingInterceptorChain.doInterceptor()方法并且传入Interceptable，拦截链则对传入Interceptable执行拦截。
+
+- 当拦截成功则调用com.alibaba.nacos.naming.interceptor.Interceptable#afterIntercept
+- 当未被拦截则调用com.alibaba.nacos.naming.interceptor.Interceptable#passIntercept
+
+具体的业务逻辑则在afterIntercept和passIntercept方法中。
 
 # 附录
 
