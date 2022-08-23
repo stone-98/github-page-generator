@@ -1026,6 +1026,86 @@ public abstract class AbstractNamingInterceptorChain<T extends Interceptable>
 
 具体的业务逻辑则在afterIntercept和passIntercept方法中。
 
+#### 初始化流程
+
+```java
+public void init() {
+    // 临时实例检查客户端的心跳
+    if (ephemeral) {
+        beatCheckTask = new ClientBeatCheckTaskV2(this);
+        HealthCheckReactor.scheduleCheck(beatCheckTask);
+    } else { // 持久实例
+        healthCheckTaskV2 = new HealthCheckTaskV2(this);
+        HealthCheckReactor.scheduleCheck(healthCheckTaskV2);
+    }
+}
+```
+
+#### 健康检查整体类图
+
+![Nacos健康检查整体架构](https://raw.githubusercontent.com/stone-98/picture-bed/main/img/Nacos%E5%81%A5%E5%BA%B7%E6%A3%80%E6%9F%A5%E6%95%B4%E4%BD%93%E6%9E%B6%E6%9E%84.png)
+
+> 在`Nacos`中，`Task`一共有多种类别，例如：
+>
+> - `NacosTask`
+> - `HealthCheckTask`
+> - `NacosHealthCheckTask`
+> - `BeatCheckTask`
+> - ...
+>
+> 在`Nacos`中一切操作皆为Task，他们都是`Runnable`的实现，可以传递给线程池执行，这也是高性能的一种有效方式。
+
+#### NacosHealthCheckTask
+
+```java
+/**
+ * Nacos health check task.
+ * Nacos健康检查任务
+ *
+ * @author xiweng.yy
+ */
+public interface NacosHealthCheckTask extends Interceptable, Runnable {
+    
+    /**
+     * Get task id.
+     * 获取任务ID
+     *
+     * @return task id.
+     */
+    String getTaskId();
+    
+    /**
+     * Do health check.
+     * 去执行健康检查
+     */
+    void doHealthCheck();
+}
+```
+
+负责执行健康检查的任务是的核心基类是`NacosHealthCheckTask`。
+
+- 继承`Interceptable`表示`NacosHealthCheckTask`的实现是拦截链可以处理的对象
+- 继承`Runnable`表示`NacosHealthCheckTask`的实现可以作为Runnable的实现传递给线程池进行执行
+
+`NacosHealthCheckTask`分别有两种具体实现：
+
+- `ClientBeatCheckTaskV2`：处理心跳相关的逻辑
+- `HealthCheckTaskV2`：处理各种连接状态
+
+#### ClientBeatCheckTaskV2
+
+`ClientBeatCheckTaskV2`负责处理心跳相关的逻辑。
+
+```java
+
+```
+
+
+
+#### HealthCheckTaskV2
+
+
+
 # 附录
 
 ## 1、集群名称
