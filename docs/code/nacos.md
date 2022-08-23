@@ -113,7 +113,7 @@ public class NacosServiceManager {
 
 整体概览：
 
-![image-20220807113056073](C:\Users\stone-98\AppData\Roaming\Typora\typora-user-images\image-20220807113056073.png)
+![image-20220807113056073](https://raw.githubusercontent.com/stone-98/picture-bed/main/imgimage-20220807113056073.png)
 
 - BaseRpcServer：定义了基本的服务启动以及关闭的接口。
 - BaseGrpcServer：实现了基本的Server模块的功能。
@@ -124,7 +124,7 @@ public class NacosServiceManager {
 
 整体概览：
 
-![image-20220807152011476](C:\Users\stone-98\AppData\Roaming\Typora\typora-user-images\image-20220807152011476.png)
+![image-20220807152011476](https://raw.githubusercontent.com/stone-98/picture-bed/main/imgimage-20220807152011476.png)
 
 ##### RpcClient
 
@@ -225,7 +225,7 @@ public abstract class GrpcClient extends RpcClient {
 
 整体概览：
 
-![image-20220808222411675](C:\Users\stone-98\AppData\Roaming\Typora\typora-user-images\image-20220808222411675.png)
+![image-20220808222411675](https://raw.githubusercontent.com/stone-98/picture-bed/main/imgimage-20220808222411675.png)
 
 - Requester：定义了基本的请求接口
 - Connection：继承了Requester接口，在Requester接口的基础上扩展了connectionId、isAbandon字段
