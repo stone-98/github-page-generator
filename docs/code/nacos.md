@@ -1104,6 +1104,8 @@ public interface NacosHealthCheckTask extends Interceptable, Runnable {
 
 #### HealthCheckTaskV2
 
+## Nacos配置中心原理
+
 
 
 # 附录
