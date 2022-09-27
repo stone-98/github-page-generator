@@ -63,6 +63,44 @@ RBAC基于角色的访问控制，在kubernetes1.5版本引入，现已成为默
 - 整个RBAC由几个对象完成，可以使用Kubectl和Api进行操作
 - 可以在运行时调整
 
+#### 使用RBAC
+
+在启动api-server时将`--authorization-mode`资源设置为一个逗号分隔的列表并确保其包含RBAC。
+
+```sh
+kube-apisever --authorization-mode=RBAC
+```
+
+#### API对象
+
+RBAC中声明四种对象：Role、ClusterRole、RoleBinding、ClsterRoleBinding。
+
+##### Role和ClusterRole
+
+RBAC的Role和ClusterRol他们的权限是存粹累加的。
+
+Role用来在某个命名空间中设置访问权限，在创建Pole时，你必须指定该Role所属的命名空间。
+
+ClsterRole则是一个集群作用域的资源。ClusterRole可以用来:
+
+- 定义对某命名空间域对象的访问权限，并将在个别命名空间内被赋予访问权限。
+- 为命名空间作用域内的对象设置访问权限，并被授予跨所有命名空间的访问权限。
+- 为集群作用域的资源定义访问权限
+
+如果要在命名空间内定义角色，则应该使用Role，如果需要在集群范围定义角色， 则应该使用ClsterRole。
+
+### 实践
+
+Kubernetes集群有两类用户：由kubernetes管理的账号和普通账号。
+
+*普通账号*：是由与Kubernetes无关的服务进行管理的，Kubernetes并不包含用来代表普通用户账号的对象，普通用户的信息无法通过API调用添加到集群中，但是Kubernetes仍然认为能够提供由集群的证书机构签名的合法证书的用户是通过身份认证的用户。
+
+TODO
+
+
+
+### k8s部署dashboard
+
 
 
 ### Service
