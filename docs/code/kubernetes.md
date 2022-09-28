@@ -95,9 +95,108 @@ Kubernetes集群有两类用户：由kubernetes管理的账号和普通账号。
 
 *普通账号*：是由与Kubernetes无关的服务进行管理的，Kubernetes并不包含用来代表普通用户账号的对象，普通用户的信息无法通过API调用添加到集群中，但是Kubernetes仍然认为能够提供由集群的证书机构签名的合法证书的用户是通过身份认证的用户。
 
-TODO
+#### 创建一个用户只能管理dev空间
 
+- 创建`devuser-csr.json`文件，内容如下：
 
+```json
+{
+    "CN":"devuser",
+    "hosts":[
+
+    ],
+    "key":{
+        "algo":"rsa",
+        "size":2048
+    },
+    "names":[
+        {
+            "C":"CN",
+            "ST":"BeiJing",
+            "L":"BeiJing",
+            "O":"k8s",
+            "OU":"System"
+        }
+    ]
+}
+```
+
+- 下载证书生成工具，放`/user/local/bin`路径下
+
+```sh
+wget https://pkg.cfssl.org/R1.2/cfssl_linux-amd64
+mv cfssl_linux-amd64 /usr/local/bin/cfssl
+wget https://pkg.cfssl.org/R1.2/cfssljson_linux-amd64
+mv cfssljson_linux-amd64 /usr/local/bin/cfssljson
+wget https://pkg.cfssl.org/R1.2/cfssl-certinfo_linux-amd64
+mv cfssl-certinfo_linux-amd64 /usr/local/bin/cfssl-certinfo
+```
+
+- 生成证书（在`/etc/kubernetes/pki`创建密钥信息，`/etcc/kubernetes/pki`中存储的都是密钥信息）
+
+```sh
+##            -ca指定私钥证书，-ca-key指定私钥 以及请求的文件 -bare指定输出的用户名
+cfssl gencert -ca=ca.crt -ca-key=ca.key -profile=kubernetes /root/devuser-csr.json | cfssljson -bare devuser
+```
+
+成功生成` ca.crt`、`ca.key`、`devuser.csr`文件。（现在还不知道这些文件到底是干嘛的~~~~）
+
+- 生成kubeconfig
+
+```sh
+## 设置kubernetes的api server地址
+export KUBE_APISERVER="https://192.168.0.200:6443"
+
+## 生成kubeconfig，并配置相关认证信息 (基本参数：证书、kubernetes apiserver、kubeconfig name)
+kubectl config set-cluster kubernetes \
+--certificate-authority=/etc/kubernetes/pki/ca.crt \
+--embed-certs=true \
+--server=${KUBE_APISERVER} \
+--kubeconfig=devuser.kubeconfig
+
+## 再配置相关认证信息
+kubectl config set-credentials devuser \
+> --client-certificate=/etc/kubernetes/pki/devuser.pem \
+> --client-key=/etc/kubernetes/pki/devuser-key.pem \
+> --embed-certs=true \
+> --kubeconfig=devuser.kubeconfig
+
+## 创建dev namespace（下面需要用到）
+kubectl create namespace dev
+
+## 配置kubernetes上下文
+kubectl config set-context kubernetes \
+--cluster=kubernetes \
+--user=devuser \
+--namespace=dev \
+--kubeconfig=devuser.kubeconfig
+```
+
+至此我们成功生成了`devuser.kubeconfig`。
+
+- kubernetes集群中创建对应`rolebingding`绑定`clusterrole`(admin是自带的)并且绑定`user`和`namespace`
+
+```sh
+kubectl create rolebinding devuser-admin-binding --clusterrole=admin --user=devuser --namespace=dev
+```
+
+- devuser账户进行请求时，带上`devuser.kubeconfig`
+
+```sh
+# 在devuser用户下创建.kube文件
+mkdir /home/devuser/.kube
+# 将devuser.kubeconfig拷贝到devuser用户的.kube路径下
+cp devuser.kubeconfig /home/devuser/.kube/.kubeconfig
+# 授权
+chown devuser:devuser /home/devuser/.kube/.kubeconfig 
+# 切换到devuser用户
+su devuser
+## 配置上下文，相当于告诉kubectl，当我请求kubernetes时，使用.kubeconfig的认证信息
+kubectl config use-context kubernetes --kubeconfig=/home/devuser/.kube/.kubeconfig
+
+```
+
+- OK
 
 ### k8s部署dashboard
 
