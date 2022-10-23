@@ -80,3 +80,31 @@ docker-ce.x86_64            3:20.10.5-3.el7                     docker-ce-stable
 ```
 
 Docker安装完成~~~
+
+## Docker Compose 安装
+
+### 1、下载docker-compose
+
+```bash
+$ sudo curl -L "https://github.com/docker/compose/releases/download/v2.2.2/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+```
+
+### 2、将docker-compose二进制文件赋予可执行权限
+
+```bash
+$ sudo chmod +x /usr/local/bin/docker-compose
+```
+
+### 3、创建软链：
+
+```bash
+$ sudo ln -s /usr/local/bin/docker-compose /usr/bin/docker-compose
+```
+
+### 4、测试是否安装完成
+
+```bash
+$ docker-compose version
+cker-compose version 1.24.1, build 4667896b
+```
+
